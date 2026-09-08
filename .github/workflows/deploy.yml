@@ -1,0 +1,42 @@
+name: E-Commerce Automated Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t ecommerce-app:latest .
+
+      - name: Save Docker image
+        run: docker save ecommerce-app:latest | gzip > app.tar.gz
+
+      - name: Copy image to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 52.54.246.47
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "app.tar.gz"
+          target: "/home/ec2-user/"
+
+      - name: Deploy application
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 52.54.246.47
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            sudo docker load -i /home/ec2-user/app.tar.gz
+            sudo docker stop ecommerce || true
+            sudo docker rm ecommerce || true
+            sudo docker run -d --name ecommerce -p 80:80 ecommerce-app:latest
+            sudo rm -f /home/ec2-user/app.tar.gz
